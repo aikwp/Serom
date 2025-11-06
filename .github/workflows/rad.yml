@@ -20,10 +20,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Cache Android NDK
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         id: cache-ndk
         with:
           path: ${{ github.workspace }}/android-ndk
