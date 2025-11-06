@@ -129,7 +129,9 @@ jobs:
             "https://ftp.gnu.org/gnu/readline/readline-8.3.tar.gz" \
             "--with-curses --with-pkg-config-libdir=$PREFIX/lib/pkgconfig" \
             "readline-8.3"
-
+      - name: List build outputs
+        run: ls -R /home/runner/work/Serom/Serom/android-libs || echo "No"
+  
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
