@@ -1,0 +1,148 @@
+name: Build and Release Android aarch64 Libraries (One ZIP per Module)
+
+on:
+  push:
+    branches: [vrt, "3.*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    env:
+      ANDROID_NDK_VERSION: r27d
+      API: 24
+      TARGET: aarch64-linux-android
+      PREFIX: ${{ github.workspace }}/android-libs
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Cache Android NDK
+        uses: actions/cache@v3
+        id: cache-ndk
+        with:
+          path: ${{ github.workspace }}/android-ndk
+          key: ndk-${{ env.ANDROID_NDK_VERSION }}-linux
+          restore-keys: ndk-${{ env.ANDROID_NDK_VERSION }}-
+
+      - name: Download Android NDK
+        if: steps.cache-ndk.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ${{ github.workspace }}/android-ndk
+          cd ${{ github.workspace }}/android-ndk
+          wget -q https://dl.google.com/android/repository/android-ndk-${{ env.ANDROID_NDK_VERSION }}-linux.zip
+          unzip -q android-ndk-${{ env.ANDROID_NDK_VERSION }}-linux.zip
+          mv android-ndk-${{ env.ANDROID_NDK_VERSION }}/* .
+          rm -rf android-ndk-${{ env.ANDROID_NDK_VERSION }}*
+
+      - name: Setup environment
+        run: |
+          TOOLCHAIN="${{ github.workspace }}/android-ndk/toolchains/llvm/prebuilt/linux-x86_64"
+          SYSROOT="$TOOLCHAIN/sysroot"
+          echo "TOOLCHAIN=$TOOLCHAIN" >> $GITHUB_ENV
+          echo "SYSROOT=$SYSROOT" >> $GITHUB_ENV
+          echo "$TOOLCHAIN/bin" >> $GITHUB_PATH
+          TARGET_TRIPLE="${{ env.TARGET }}${{ env.API }}"
+          echo "TARGET_TRIPLE=$TARGET_TRIPLE" >> $GITHUB_ENV
+          COMMON_FLAGS=" "
+          echo "COMMON_FLAGS=$COMMON_FLAGS" >> $GITHUB_ENV
+          echo "CC=$TOOLCHAIN/bin/${{ env.TARGET }}${{ env.API }}-clang $COMMON_FLAGS" >> $GITHUB_ENV
+          echo "CXX=$TOOLCHAIN/bin/${{ env.TARGET }}${{ env.API }}-clang++ $COMMON_FLAGS" >> $GITHUB_ENV
+          echo "AR=$TOOLCHAIN/bin/llvm-ar" >> $GITHUB_ENV
+          echo "RANLIB=$TOOLCHAIN/bin/llvm-ranlib" >> $GITHUB_ENV
+          echo "STRIP=$TOOLCHAIN/bin/llvm-strip" >> $GITHUB_ENV
+
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y wget tar gzip bzip2 build-essential autoconf automake libtool pkg-config unzip zip curl patch
+
+      - name: Build and package modules
+        id: build
+        run: |
+          set -eux
+          mkdir -p "$PREFIX"
+
+          build_and_zip() {
+            local name="$1"
+            local url="$2"
+            local cfg_extra="$3"
+            local hg="$4"
+            local need_autoreconf="${5:-false}"
+            local post_cfg="${6:-}"
+
+            echo "=== Building $name ==="
+            rm -f "$name.tar.gz"
+            for i in {1..5}; do
+              wget "$url" -O "$name.tar.gz" && break
+              sleep 5
+            done
+
+            rm -rf "$hg" || true
+            tar xf "$name.tar.gz"
+            cd "$(find . -maxdepth 1 -type d -name "$hg*" | head -n1)" || exit 1
+
+            $need_autoreconf && autoreconf -fi
+            eval "$post_cfg" || true
+
+            PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig" \
+            CFLAGS="-O2 -fPIC -I$PREFIX/include $COMMON_FLAGS" \
+            CXXFLAGS="-O2 -fPIC -I$PREFIX/include $COMMON_FLAGS" \
+            LDFLAGS="-L$PREFIX/lib $COMMON_FLAGS" \
+            ./configure \
+              --host="$TARGET_TRIPLE" \
+              --prefix="$PREFIX" \
+              --with-pkg-config-libdir="$PREFIX/lib/pkgconfig" \
+              $cfg_extra
+
+            make -j$(nproc)
+            make install
+
+            mkdir -p "$PREFIX/$name"
+            find "$PREFIX" -maxdepth 1 ! -name "$name" ! -path "$PREFIX" -exec mv {} "$PREFIX/$name/" \; 2>/dev/null || true
+            find "$PREFIX/$name/lib" -type f \( -name "*.a" -o -name "*.so*" \) -exec $STRIP -g {} \; || true
+
+            cd "$PREFIX"
+            zip -r9 "${name}-${{ github.ref_name }}.zip" "$name"
+            echo "${name}_zip=$(pwd)/${name}-${{ github.ref_name }}.zip" >> "$GITHUB_OUTPUT"
+
+            cd "${{ github.workspace }}"
+            rm -rf "$hg" "$name.tar.gz"
+          }
+
+          build_and_zip ncurses \
+            "https://ftp.gnu.org/gnu/ncurses/ncurses-6.5.tar.gz" \
+            "--with-shared --without-debug --without-ada --without-manpages --without-progs --without-tests --enable-widec --enable-pc-files --with-pkg-config-libdir=$PREFIX/lib/pkgconfig" \
+            "ncurses-6.5"
+          build_and_zip gdbm \
+            "https://ftp.gnu.org/gnu/gdbm/gdbm-1.26.tar.gz" \
+            "--with-pkg-config-libdir=$PREFIX/lib/pkgconfig" \
+            "gdbm-1.26"
+
+          build_and_zip readline \
+            "https://ftp.gnu.org/gnu/readline/readline-8.3.tar.gz" \
+            "--with-curses --with-pkg-config-libdir=$PREFIX/lib/pkgconfig" \
+            "readline-8.3"
+      - name: List build outputs
+        run: ls /home/runner/work/Serom/Serom/android-libs || echo "No"
+
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Android aarch64 Modules ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          files: |
+            /home/runner/work/Serom/Serom/android-libs/readline-vrt.zip
+            /home/runner/work/Serom/Serom/android-libs/readline/gdbm-vrt.zip
+            /home/runner/work/Serom/Serom/android-libs/readline/gdbm/ncurses-vrt.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
