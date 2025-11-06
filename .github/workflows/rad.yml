@@ -119,18 +119,19 @@ jobs:
             "https://ftp.gnu.org/gnu/ncurses/ncurses-6.5.tar.gz" \
             "--with-shared --without-debug --without-ada --without-manpages --without-progs --without-tests --enable-widec --enable-pc-files --with-pkg-config-libdir=$PREFIX/lib/pkgconfig" \
             "ncurses-6.5"
-
+          cd /home/runner/work/Serom/Serom/android-libs/
           build_and_zip gdbm \
             "https://ftp.gnu.org/gnu/gdbm/gdbm-1.26.tar.gz" \
             "--with-pkg-config-libdir=$PREFIX/lib/pkgconfig" \
             "gdbm-1.26"
+          cd /home/runner/work/Serom/Serom/android-libs/
 
           build_and_zip readline \
             "https://ftp.gnu.org/gnu/readline/readline-8.3.tar.gz" \
             "--with-curses --with-pkg-config-libdir=$PREFIX/lib/pkgconfig" \
             "readline-8.3"
       - name: List build outputs
-        run: ls -R /home/runner/work/Serom/Serom/android-libs || echo "No"
+        run: ls /home/runner/work/Serom/Serom/android-libs || echo "No"
   
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
