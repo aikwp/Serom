@@ -1,0 +1,149 @@
+name: Build Android
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, '3.*']
+  pull_request:
+    branches: [main, '3.*']
+
+jobs:
+  build-template:
+    if: ${{ github.repository_owner == 'George-Codr' && github.event.repository.name == 'Yer' }}
+    name: Build Android Python (${{ matrix.version }}) NDK ${{ matrix.ndk_major }}
+    runs-on: macos-14
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - version: 3.13.9
+            filename: Python-3.13.9.tgz
+            folder: Python-3.13.9
+            url_secret: PY313_URL
+            ndk_version: 27.3.13750724
+            ndk_major: 27
+          - version: 3.14.0
+            filename: Python-3.14.0.tgz
+            folder: Python-3.14.0
+            url_secret: PY314_URL
+            ndk_version: 27.3.13750724
+            ndk_major: 27
+          - version: 3.15.0a1
+            filename: Python-3.15.0a1.tgz
+            folder: Python-3.15.0a1
+            url_secret: PY315_URL
+            ndk_version: 27.3.13750724
+            ndk_major: 27
+
+    env:
+      ARCH: aarch64
+      ANDROID_NDK_VERSION: ${{ matrix.ndk_version }}
+      LLVM_VERSION: 21
+      DEPS_ROOT: yrtuo
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Install minimal macOS tools
+        run: |
+          brew install wget dpkg gh bash zstd
+          brew uninstall gcc || true
+
+      - name: Set up Android SDK + NDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK
+        run: |
+          set -euxo pipefail
+          sdkmanager "ndk;${ANDROID_NDK_VERSION}"
+          ls -1 "$ANDROID_HOME/ndk/"
+
+      - name: Setup DEPS_ROOT and extract Termux .deb packages
+        run: |
+          set -euxo pipefail
+          export PATH="/opt/homebrew/bin:$PATH"
+          DEPS_ROOT="${{ env.DEPS_ROOT }}"
+          mkdir -p "$DEPS_ROOT"/{include,lib,bin,share}
+
+          DEBS=(
+            "https://packages.termux.dev/apt/termux-main/pool/main/x/xz-utils/xz-utils_5.8.1-1_aarch64.deb"
+            "https://packages.termux.dev/apt/termux-main/pool/main/t/tcl/tcl_8.6.14-1_aarch64.deb"
+            "https://packages.termux.dev/apt/termux-main/pool/main/t/tk/tk_8.6.14-1_aarch64.deb"
+            "https://packages.termux.dev/apt/termux-main/pool/main/libf/libffi/libffi_3.4.7-1_aarch64.deb"
+            "https://packages.termux.dev/apt/termux-main/pool/main/n/ncurses/ncurses_6.5.20240831-3_aarch64.deb"
+            "https://packages.termux.dev/apt/termux-main/pool/main/g/gdbm/gdbm_1.26-1_aarch64.deb"
+            "https://packages.termux.dev/apt/termux-main/pool/main/libu/libuuid/libuuid_2.41.2_aarch64.deb"
+            "https://packages.termux.dev/apt/termux-main/pool/main/r/readline/readline_8.3.1-1_aarch64.deb"
+          )
+
+          TMPDIR=$(mktemp -d)
+          trap 'rm -rf "$TMPDIR"' EXIT
+
+          for url in "${DEBS[@]}"; do
+            deb="$(basename "$url")"
+            curl -L "$url" -o "$TMPDIR/$deb"
+            dpkg-deb -x "$TMPDIR/$deb" "$TMPDIR"
+            TERMUX_ROOT="$TMPDIR/data/data/com.termux/files"
+            if [ ! -d "$TERMUX_ROOT" ]; then
+              echo "Termux root not found in $deb"
+              continue
+            fi
+            for dir in lib include bin share; do
+              src="$TERMUX_ROOT/usr/$dir"
+              if [ -d "$src" ]; then
+                cp -a "$src/"* "$DEPS_ROOT/$dir/" 2>/dev/null || true
+              fi
+            done
+            rm -f "$TMPDIR/$deb"
+            rm -rf "$TMPDIR/data"
+          done
+          echo "$DEPS_ROOT/bin" >> $GITHUB_PATH
+
+      - name: Download official Python source tarball (from Secret)
+        run: |
+          set -euxo pipefail
+          FILE="${{ matrix.filename }}"
+          FOLDER="${{ matrix.folder }}"
+          VERSION="${{ matrix.version }}"
+          case "$VERSION" in
+            3.13.9) URL="${{ secrets.PY313_URL }}" ;;
+            3.14.0) URL="${{ secrets.PY3IA_URL }}" ;;
+            3.15.0a1) URL="${{ secrets.PY315_URL }}" ;;
+            *) echo "Unknown version $VERSION"; exit 1 ;;
+          esac
+          [ -z "$URL" ] && { echo "Secret for $VERSION missing"; exit 1; }
+          curl -L "$URL" -o "$FILE"
+          tar -xzf "$FILE"
+          mv "$FOLDER" "cpython-${VERSION}"
+
+      - name: Apply Termux patch and build CPython
+        working-directory: ./cpython-${{ matrix.version }}
+        run: |
+          set -euxo pipefail
+          export DEPS_ROOT="${{ github.workspace }}/${{ env.DEPS_ROOT }}"
+          export CPPFLAGS="-I${DEPS_ROOT}/include"
+          export LDFLAGS="-L${DEPS_ROOT}/lib -Wl,-rpath-link,${DEPS_ROOT}/lib"
+          export CPU_COUNT="$(sysctl -n hw.ncpu)"
+
+          rm -f android-env.sh
+          wget https://raw.githubusercontent.com/George-Codr/Yer/refs/heads/main/android-env.sh
+          case "${{ matrix.version }}" in
+            3.13.9)
+              wget https://raw.githubusercontent.com/yubrajbhoi/termux-python/fb5bad6582a83fe6db36840f47e29521083160a1/termux.patch
+              git apply termux.patch
+              ;;
+            3.14.0)
+              wget https://raw.githubusercontent.com/yubrajbhoi/termux-python/refs/heads/main/termux.patch
+              git apply termux.patch
+              ;;
+            *) echo "No patch for ${{ matrix.version }}" ;;
+          esac
+          
+          cd Android
+          /opt/homebrew/bin/python3.13 --version
+          /opt/homebrew/bin/python3.13 ./android.py clean
+          /opt/homebrew/bin/python3.13 ./android.py ci --fast-ci aarch64-linux-android
+          ls -lh ../cross-build/aarch64-linux-android/ || true
+          du -sh ../cross-build/aarch64-linux-android/
