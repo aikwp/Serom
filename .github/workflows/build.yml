@@ -50,16 +50,15 @@ jobs:
 
       - name: Install macOS dependencies for Python build
         run: |
-          brew install \
-            gdbm \
-            ncurses \
-            readline \
-            libffi \
-            tcl-tk \
-            ossp-uuid \
-            xz \
-            wget \
-            dpkg
+          brew update
+          for pkg in gdbm ncurses readline libffi tcl-tk ossp-uuid xz wget dpkg; do
+            if ! brew list --formula | grep -q "^${pkg}\$"; then
+              echo "Installing $pkg..."
+              brew install "$pkg"
+            else
+              echo "$pkg already installed."
+            fi
+          done
           brew uninstall gcc || true
           echo "✅ macOS build dependencies installed."
       - name: Set up Android SDK + NDK
