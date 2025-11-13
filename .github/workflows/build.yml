@@ -211,7 +211,7 @@ jobs:
           files: |
             pyv*_${{ matrix.version }}_aarch64.deb
           fail_on_unmatched_files: true
-          overwrite: true
+          overwrite_files: true
           draft: false
           prerelease: false
           token: ${{ secrets.GITHUB_TOKEN }}
