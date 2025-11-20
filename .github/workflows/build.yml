@@ -3,7 +3,7 @@ name: Build Android
 on:
   workflow_dispatch:
   push:
-    branches: [main, '3.*']
+    branches: [clox, '3.*']
   pull_request:
     branches: [main, '3.*']
 
