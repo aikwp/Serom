@@ -221,89 +221,82 @@ jobs:
           prerelease: false
           token: ${{ secrets.GITHUB_TOKEN }}
   release:
-  needs: build  # Retain if build populates per-version releases; otherwise, remove
-  runs-on: ubuntu-latest
-  if: ${{ github.repository_owner == 'aikwp' && github.event.repository.name == 'Serom' && (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch') }}
-  steps:
-    - name: Fetch .deb Assets Directly from Releases
-      run: |
-        set -euxo pipefail
-        mkdir -p release-assets
-        
-        # Define version-tag mappings (expandable for additional matrices)
-        declare -A VERSION_TAGS=(
-          ["3.13.9"]="v3.13.9-aarch64"
-          ["3.14.0"]="v3.14.0-aarch64"
-          ["3.15.0a1"]="v3.15.0a1-aarch64"
-        )
-        
-        downloaded=0
-        for version in "${!VERSION_TAGS[@]}"; do
-          tag="${VERSION_TAGS[$version]}"
-          url="https://github.com/${{ github.repository_owner }}/${{ github.event.repository.name }}/releases/download/${tag}/pyv_${version}_aarch64.deb"
-          output="release-assets/pyv_${version}_aarch64.deb"
-          
-          if curl --location --fail --output "$output" --silent "$url"; then
-            echo "✅ Downloaded $version from $url (size: $(stat -c%s "$output") bytes)"
-            ((downloaded++))
-          else
-            echo "❌ Failed to download $version from $url"
-            rm -f "$output"
-          fi
-        done
-        
-        if [ "$downloaded" -eq 0 ]; then
-          echo "❌ No assets downloaded; aborting release"
-          exit 1
-        fi
-        echo "Downloaded $downloaded .deb files"
-        ls -lh release-assets/
-
-    - name: Validate Downloaded .deb Integrity
-      run: |
-        set -euxo pipefail
-        for deb in release-assets/*.deb; do
-          if ! dpkg-deb --info "$deb" >/dev/null 2>&1; then
-            echo "❌ Invalid .deb: $deb"
+    runs-on: ubuntu-latest
+    if: ${{ github.repository_owner == 'aikwp' && github.event.repository.name == 'Serom' }}
+    steps:
+      - name: Fetch .deb assets directly from existing releases
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          declare -A assets=(
+            ["3.13.9"]="v3.13.9-aarch64"
+            ["3.14.0"]="v3.14.0-aarch64"
+            ["3.15.0a1"]="v3.15.0a1-aarch64"
+          )
+          downloaded=0
+          for version in "${!assets[@]}"; do
+            tag="${assets[$version]}"
+            url="https://github.com/${{ github.repository }}/releases/download/${tag}/pyv_${version}_aarch64.deb"
+            dest="release-assets/pyv_${version}_aarch64.deb"
+            echo "Downloading $version from $url"
+            if curl -fL --silent --output "$dest" "$url"; then
+              echo "Downloaded pyv_${version}_aarch64.deb ($(stat -c%s "$dest") bytes)"
+              ((downloaded++))
+            else
+              echo "Failed to download $version"
+              rm -f "$dest"
+            fi
+          done
+          if [ "$downloaded" -eq 0 ]; then
+            echo "No .deb files downloaded — aborting release creation"
             exit 1
           fi
-          echo "✅ Valid .deb: $deb ($(dpkg-deb --info "$deb" | grep '^ Package:' | cut -d' ' -f2-))"
-        done
-        echo "All .deb files validated"
-
-    - name: Determine Aggregated Metadata
-      id: meta
-      run: |
-        versions=()
-        for deb in release-assets/*.deb; do
-          ver=$(basename "$deb" | sed -E 's/pyv_([0-9a\.]+)_aarch64.deb/\1/')
-          versions+=("$ver")
-        done
-        latest=$(printf '%s\n' "${versions[@]}" | sort -V | tail -n1)
-        count="${#versions[@]}"
-        echo "latest=$latest" >> $GITHUB_OUTPUT
-        echo "count=$count" >> $GITHUB_OUTPUT
-        echo "versions=$(printf ', %s' "${versions[@]}")" >> $GITHUB_OUTPUT
-
-    - name: Create / Update Aggregated GitHub Release
-      uses: softprops/action-gh-release@v2
-      with:
-        tag_name: aarch64-aggregated
-        name: Aggregated Python .deb Builds for Termux (aarch64)
-        body: |
-          Consolidated release encompassing ${{ steps.meta.outputs.count }} Python versions for Termux aarch64.
-          
-          Versions: ${{ steps.meta.outputs.versions }}
-          Latest: ${{ steps.meta.outputs.latest }}
-          NDK: r27
-          Architecture: aarch64
-          Workflow Run: ${{ github.run_id }}
-          Commit: ${{ github.sha }}
-          Assets sourced directly from per-version releases on ${{ github.repository }}.
-        files: |
-          release-assets/*.deb
-        fail_on_unmatched_files: false
-        overwrite_files: true  # Ensures idempotent updates to existing assets
-        draft: false
-        prerelease: false
-        token: ${{ secrets.GITHUB_TOKEN }}
+          echo "Successfully downloaded $downloaded .deb file(s)"
+          ls -lh release-assets/
+      - name: Validate .deb package integrity
+        run: |
+          set -euo pipefail
+          for deb in release-assets/*.deb; do
+            echo "Validating $deb"
+            dpkg-deb --info "$deb" > /dev/null
+            dpkg-deb --contents "$deb" > /dev/null
+            echo "Valid: $deb"
+          done
+      - name: Extract metadata for release notes
+        id: meta
+        run: |
+          set -euo pipefail
+          versions=()
+          for f in release-assets/*.deb; do
+            ver=$(basename "$f" | sed -E 's/pyv_([0-9a\.]+)_aarch64\.deb/\1/')
+            versions+=("$ver")
+          done
+          latest=$(printf '%s\n' "${versions[@]}" | sort -V | tail -n1)
+          count=${#versions[@]}
+          list=$(IFS=', '; echo "${versions[*]}")
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          echo "list=$list" >> "$GITHUB_OUTPUT"
+      - name: Create or update aggregated release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: aarch64-aggregated
+          name: Aggregated Termux Python Builds (aarch64)
+          body: |
+            Consolidated release containing all current Termux-compatible Python .deb packages.
+            **Versions included** (${{ steps.meta.outputs.count }}):
+            ${{ steps.meta.outputs.list }}
+            **Latest**: ${{ steps.meta.outputs.latest }}
+            **NDK**: r27
+            **Architecture**: aarch64
+            **Source**: Directly fetched from per-version releases
+            **Commit**: ${{ github.sha }}
+            **Run**: ${{ github.run_id }}
+            Built and aggregated automatically by GitHub Actions.
+          files: |
+            release-assets/*.deb
+          fail_on_unmatched_files: false
+          overwrite_files: true
+          draft: false
+          prerelease: false
+          token: ${{ secrets.GITHUB_TOKEN }}
