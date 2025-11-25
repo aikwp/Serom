@@ -248,10 +248,9 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: Tree
+          tag_name: Built
           name: Tree
           body: |
-            Latest: ${{ steps.latest.outputs.latest }}
             NDK: r27
             Arch: aarch64
             Commit: ${{ github.sha }}
