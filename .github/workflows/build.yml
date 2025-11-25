@@ -223,18 +223,21 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
-    if: ${{ github.repository_owner == 'aikwp' && github.event.repository.name == 'Serom' }}
     steps:
       - name: Download All .deb Artifacts
         uses: actions/download-artifact@v4
         with:
           path: all-debs
+          pattern: deb-*  # Matches all matrix-generated artifacts
+          merge-multiple: true  # Flattens into single directory
+
       - name: Prepare Release Assets
         run: |
           mkdir -p release-assets
           find all-debs -name "*.deb" -exec cp {} release-assets/ \;
           ls -lh release-assets/
-      - name: Determine Latest Version
+
+      - name: Determine Latest Version (for Body)
         id: latest
         run: |
           versions=()
@@ -245,21 +248,24 @@ jobs:
           latest=$(printf '%s\n' "${versions[@]}" | sort -V | tail -1)
           echo "latest=$latest" >> $GITHUB_OUTPUT
           echo "Latest version: $latest"
-      - name: Create GitHub Release
+
+      - name: Create / Update Aggregated GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: Built
-          name: Tree
+          tag_name: aarch64-latest  # Single, evergreen tag for all .debs
+          name: All Python Builds for Termux (aarch64)
           body: |
+            Aggregated release with .deb packages for all Python versions.
+            Latest: ${{ steps.latest.outputs.latest }}
             NDK: r27
             Arch: aarch64
             Commit: ${{ github.sha }}
-            Run: ${{ github.run_id }}
-            Built with GitHub Actions on macOS 14.
+            Workflow Run: ${{ github.run_id }}
+            Built on macOS 14 via GitHub Actions.
           files: |
             release-assets/*.deb
+          fail_on_unmatched_files: false
+          overwrite_files: true  # Replaces prior assets in the same tag
           draft: false
-          overwrite_files: true
           prerelease: false
-          fail_on_unmatched_files: true
           token: ${{ secrets.GITHUB_TOKEN }}
