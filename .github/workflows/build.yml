@@ -221,51 +221,89 @@ jobs:
           prerelease: false
           token: ${{ secrets.GITHUB_TOKEN }}
   release:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download All .deb Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: all-debs
-          pattern: deb-*  # Matches all matrix-generated artifacts
-          merge-multiple: true  # Flattens into single directory
+  needs: build  # Retain if build populates per-version releases; otherwise, remove
+  runs-on: ubuntu-latest
+  if: ${{ github.repository_owner == 'aikwp' && github.event.repository.name == 'Serom' && (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch') }}
+  steps:
+    - name: Fetch .deb Assets Directly from Releases
+      run: |
+        set -euxo pipefail
+        mkdir -p release-assets
+        
+        # Define version-tag mappings (expandable for additional matrices)
+        declare -A VERSION_TAGS=(
+          ["3.13.9"]="v3.13.9-aarch64"
+          ["3.14.0"]="v3.14.0-aarch64"
+          ["3.15.0a1"]="v3.15.0a1-aarch64"
+        )
+        
+        downloaded=0
+        for version in "${!VERSION_TAGS[@]}"; do
+          tag="${VERSION_TAGS[$version]}"
+          url="https://github.com/${{ github.repository_owner }}/${{ github.event.repository.name }}/releases/download/${tag}/pyv_${version}_aarch64.deb"
+          output="release-assets/pyv_${version}_aarch64.deb"
+          
+          if curl --location --fail --output "$output" --silent "$url"; then
+            echo "✅ Downloaded $version from $url (size: $(stat -c%s "$output") bytes)"
+            ((downloaded++))
+          else
+            echo "❌ Failed to download $version from $url"
+            rm -f "$output"
+          fi
+        done
+        
+        if [ "$downloaded" -eq 0 ]; then
+          echo "❌ No assets downloaded; aborting release"
+          exit 1
+        fi
+        echo "Downloaded $downloaded .deb files"
+        ls -lh release-assets/
 
-      - name: Prepare Release Assets
-        run: |
-          mkdir -p release-assets
-          find all-debs -name "*.deb" -exec cp {} release-assets/ \;
-          ls -lh release-assets/
+    - name: Validate Downloaded .deb Integrity
+      run: |
+        set -euxo pipefail
+        for deb in release-assets/*.deb; do
+          if ! dpkg-deb --info "$deb" >/dev/null 2>&1; then
+            echo "❌ Invalid .deb: $deb"
+            exit 1
+          fi
+          echo "✅ Valid .deb: $deb ($(dpkg-deb --info "$deb" | grep '^ Package:' | cut -d' ' -f2-))"
+        done
+        echo "All .deb files validated"
 
-      - name: Determine Latest Version (for Body)
-        id: latest
-        run: |
-          versions=()
-          for f in release-assets/*.deb; do
-            ver=$(basename "$f" | grep -oP 'pyv\K[0-9a\.]+')
-            versions+=("$ver")
-          done
-          latest=$(printf '%s\n' "${versions[@]}" | sort -V | tail -1)
-          echo "latest=$latest" >> $GITHUB_OUTPUT
-          echo "Latest version: $latest"
+    - name: Determine Aggregated Metadata
+      id: meta
+      run: |
+        versions=()
+        for deb in release-assets/*.deb; do
+          ver=$(basename "$deb" | sed -E 's/pyv_([0-9a\.]+)_aarch64.deb/\1/')
+          versions+=("$ver")
+        done
+        latest=$(printf '%s\n' "${versions[@]}" | sort -V | tail -n1)
+        count="${#versions[@]}"
+        echo "latest=$latest" >> $GITHUB_OUTPUT
+        echo "count=$count" >> $GITHUB_OUTPUT
+        echo "versions=$(printf ', %s' "${versions[@]}")" >> $GITHUB_OUTPUT
 
-      - name: Create / Update Aggregated GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: aarch64-latest  # Single, evergreen tag for all .debs
-          name: All Python Builds for Termux (aarch64)
-          body: |
-            Aggregated release with .deb packages for all Python versions.
-            Latest: ${{ steps.latest.outputs.latest }}
-            NDK: r27
-            Arch: aarch64
-            Commit: ${{ github.sha }}
-            Workflow Run: ${{ github.run_id }}
-            Built on macOS 14 via GitHub Actions.
-          files: |
-            release-assets/*.deb
-          fail_on_unmatched_files: false
-          overwrite_files: true  # Replaces prior assets in the same tag
-          draft: false
-          prerelease: false
-          token: ${{ secrets.GITHUB_TOKEN }}
+    - name: Create / Update Aggregated GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: aarch64-aggregated
+        name: Aggregated Python .deb Builds for Termux (aarch64)
+        body: |
+          Consolidated release encompassing ${{ steps.meta.outputs.count }} Python versions for Termux aarch64.
+          
+          Versions: ${{ steps.meta.outputs.versions }}
+          Latest: ${{ steps.meta.outputs.latest }}
+          NDK: r27
+          Architecture: aarch64
+          Workflow Run: ${{ github.run_id }}
+          Commit: ${{ github.sha }}
+          Assets sourced directly from per-version releases on ${{ github.repository }}.
+        files: |
+          release-assets/*.deb
+        fail_on_unmatched_files: false
+        overwrite_files: true  # Ensures idempotent updates to existing assets
+        draft: false
+        prerelease: false
+        token: ${{ secrets.GITHUB_TOKEN }}
