@@ -226,7 +226,7 @@ jobs:
     steps:
       - name: Fetch .deb assets directly from existing releases
         run: |
-          set -euo pipefail
+          set -euxo pipefail
           mkdir -p release-assets
           declare -A assets=(
             ["3.13.9"]="v3.13.9-aarch64"
