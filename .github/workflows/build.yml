@@ -228,31 +228,10 @@ jobs:
         run: |
           set -euxo pipefail
           mkdir -p release-assets
-          declare -A assets=(
-            ["3.13.9"]="v3.13.9-aarch64"
-            ["3.14.0"]="v3.14.0-aarch64"
-            ["3.15.0a1"]="v3.15.0a1-aarch64"
-          )
-          downloaded=0
-          for version in "${!assets[@]}"; do
-            tag="${assets[$version]}"
-            url="https://github.com/${{ github.repository }}/releases/download/${tag}/pyv_${version}_aarch64.deb"
-            dest="release-assets/pyv_${version}_aarch64.deb"
-            echo "Downloading $version from $url"
-            if curl -fL --silent --output "$dest" "$url"; then
-              echo "Downloaded pyv_${version}_aarch64.deb ($(stat -c%s "$dest") bytes)"
-              ((downloaded++))
-            else
-              echo "Failed to download $version"
-              rm -f "$dest"
-            fi
-          done
-          if [ "$downloaded" -eq 0 ]; then
-            echo "No .deb files downloaded — aborting release creation"
-            exit 1
-          fi
-          echo "Successfully downloaded $downloaded .deb file(s)"
-          ls -lh release-assets/
+          wget https://github.com/aikwp/Serom/releases/download/v3.13.9-aarch64/pyv_3.13.9_aarch64.deb
+          wget https://github.com/aikwp/Serom/releases/download/v3.14.0-aarch64/pyv_3.14.0_aarch64.deb
+          wget https://github.com/aikwp/Serom/releases/download/v3.15.0a1-aarch64/pyv_3.15.0a1_aarch64.deb
+              
       - name: Validate .deb package integrity
         run: |
           set -euo pipefail
@@ -294,7 +273,7 @@ jobs:
             **Run**: ${{ github.run_id }}
             Built and aggregated automatically by GitHub Actions.
           files: |
-            release-assets/*.deb
+            release-assets/**.deb
           fail_on_unmatched_files: false
           overwrite_files: true
           draft: false
