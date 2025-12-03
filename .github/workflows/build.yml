@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  build-template:
+  build:
     if: ${{ github.repository_owner == 'aikwp' && github.event.repository.name == 'Serom' }}
     name: Build Android Python (${{ matrix.version }}) NDK ${{ matrix.ndk_major }}
     runs-on: ubuntu-24.04
@@ -46,7 +46,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Install Ubuntu dependencies for Python build
         run: |
@@ -193,6 +193,11 @@ jobs:
 
           dpkg-deb --build "$DEB_DIR" pyv_${{ matrix.version }}_aarch64.deb
 
+      - name: Upload .deb as Artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: deb-pyv${{ matrix.version }}
+          path: deb-build/pyv_${{ matrix.version }}_aarch64.deb
       - name: Create / Update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -212,3 +217,4 @@ jobs:
           draft: false
           prerelease: false
           token: ${{ secrets.GITHUB_TOKEN }}
+  
