@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   build:
-    if: ${{ github.repository_owner == 'aikwp' && github.event.repository.name == 'Serom' }}
+    if: ${{ github.repository_owner == 'George-Codr' && github.event.repository.name == 'Yer' }}
     name: Build Android Python (${{ matrix.version }}) NDK ${{ matrix.ndk_major }}
     runs-on: macos-14
     timeout-minutes: 120
@@ -20,21 +20,21 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - version: 3.13.9
-            filename: Python-3.13.9.tgz
-            folder: Python-3.13.9
+          - version: 3.13.11
+            filename: Python-3.13.11.tgz
+            folder: Python-3.13.11
             url_secret: PY313_URL
             ndk_version: 27.3.13750724
             ndk_major: 27
-          - version: 3.14.0
-            filename: Python-3.14.0.tgz
-            folder: Python-3.14.0
+          - version: 3.14.2
+            filename: Python-3.14.2.tgz
+            folder: Python-3.14.2
             url_secret: PY314_URL
             ndk_version: 27.3.13750724
             ndk_major: 27
-          - version: 3.15.0a1
-            filename: Python-3.15.0a1.tgz
-            folder: Python-3.15.0a1
+          - version: 3.15.0a2
+            filename: Python-3.15.0a2.tgz
+            folder: Python-3.15.0a2
             url_secret: PY315_URL
             ndk_version: 27.3.13750724
             ndk_major: 27
@@ -42,6 +42,8 @@ jobs:
     env:
       ARCH: aarch64
       ANDROID_NDK_VERSION: ${{ matrix.ndk_version }}
+      ANDROID_SDK_VERSION: 35
+      ANDROID_BUILD_TOOLS: 35.0.0
       LLVM_VERSION: 21
 
     steps:
@@ -67,7 +69,11 @@ jobs:
       - name: Install Android NDK
         run: |
           set -euxo pipefail
-          sdkmanager "ndk;${ANDROID_NDK_VERSION}"
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-${ANDROID_SDK_VERSION}" \
+            "build-tools;${ANDROID_BUILD_TOOLS}" \
+            "ndk;${ANDROID_NDK_VERSION}"
           echo "✅ Android NDK ${ANDROID_NDK_VERSION} installed."
           ls -1 $ANDROID_HOME/ndk/
 
@@ -121,9 +127,9 @@ jobs:
 
           # Select correct secret directly by version
           case "$VERSION" in
-            3.13.9) URL="${{ secrets.PY313_URL }}" ;;
-            3.14.0) URL="${{ secrets.PY314_URL }}" ;;
-            3.15.0a1) URL="${{ secrets.PY315_URL }}" ;;
+            3.13.11) URL="${{ secrets.PY313_URL }}" ;;
+            3.14.2) URL="${{ secrets.PY314_URL }}" ;;
+            3.15.0a2) URL="${{ secrets.PY315_URL }}" ;;
             *) echo "❌ Unknown version $VERSION"; exit 1 ;;
           esac
 
@@ -139,7 +145,7 @@ jobs:
           
 
       - name: Build CPython for Android
-        working-directory: ./cpython-${{ matrix.version }}/Android
+        working-directory: ./cpython-${{ matrix.version }}
         env:
           CC: ${{ env.CC }}
           CXX: ${{ env.CXX }}
@@ -149,11 +155,10 @@ jobs:
           RANLIB: ${{ env.RANLIB }}
         run: |
           set -euxo pipefail
-          cd ..
           VERSION="${{ matrix.version }}"
           case "$VERSION" in
-            3.13.9) wget https://raw.githubusercontent.com/yubrajbhoi/termux-python/fb5bad6582a83fe6db36840f47e29521083160a1/termux.patch && git apply termux.patch ;;
-            3.14.0) wget https://raw.githubusercontent.com/yubrajbhoi/termux-python/refs/heads/main/termux.patch && git apply termux.patch ;;
+            3.13.11) wget https://raw.githubusercontent.com/yubrajbhoi/termux-python/fb5bad6582a83fe6db36840f47e29521083160a1/termux.patch && git apply termux.patch ;;
+            3.14.2) wget https://raw.githubusercontent.com/yubrajbhoi/termux-python/refs/heads/main/termux.patch && git apply termux.patch ;;
             *) echo "Skip" ;;
           esac
           cd Android
@@ -197,20 +202,21 @@ jobs:
           dpkg-deb --build "$DEB_DIR" pyv_${{ matrix.version }}_aarch64.deb
 
       - name: Upload .deb as Artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: deb-pyv${{ matrix.version }}
-          path: deb-build/pyv_${{ matrix.version }}_aarch64.deb
+          path: pyv_${{ matrix.version }}_aarch64.deb
       - name: Create / Update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ matrix.version }}-aarch64
-          name: pyv ${{ matrix.version }} (aarch64)
+          tag_name: pyv__a
+          name: pyv
           body: |
-            **Python:** ${{ matrix.version }}
+            **Python:** 3.13,3.14,3.15
             **Arch:** aarch64
+            **NDK:** r27
             **Commit:** ${{ github.sha }}
-            **Workflow run:** ${{ github.run_id }}
+            **Run:** ${{ github.run_id }}
 
             Built automatically by GitHub Actions.
           files: |
@@ -220,4 +226,3 @@ jobs:
           draft: false
           prerelease: false
           token: ${{ secrets.GITHUB_TOKEN }}
-  
