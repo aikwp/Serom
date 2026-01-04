@@ -1,11 +1,183 @@
-# To get started with Dependabot version updates, you'll need to specify which
-# package ecosystems to update and where the package manifests are located.
-# Please see the documentation for all configuration options:
-# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
-
 version: 2
+
 updates:
-  - package-ecosystem: "github-actions"
-    directory: "/" # Root of your repository where .github/workflows lives
+  # =========================
+  # NPM / Yarn / PNPM
+  # =========================
+  - package-ecosystem: "npm"
+    directory: "/"
     schedule:
       interval: "daily"
+    open-pull-requests-limit: 20
+    versioning-strategy: "increase"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "npm"
+    groups:
+      npm-prod:
+        dependency-type: "production"
+      npm-dev:
+        dependency-type: "development"
+
+  # =========================
+  # Python (pip / pip-tools / poetry)
+  # =========================
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    open-pull-requests-limit: 20
+    versioning-strategy: "increase"
+    commit-message:
+      prefix: "chore(deps)"
+    labels:
+      - "dependencies"
+      - "python"
+    groups:
+      python-all:
+        patterns:
+          - "*"
+
+  # =========================
+  # GitHub Actions
+  # =========================
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    open-pull-requests-limit: 20
+    commit-message:
+      prefix: "ci(deps)"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    groups:
+      actions-all:
+        patterns:
+          - "*"
+
+  # =========================
+  # Docker
+  # =========================
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(docker)"
+    labels:
+      - "dependencies"
+      - "docker"
+
+  # =========================
+  # Rust (Cargo)
+  # =========================
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    open-pull-requests-limit: 15
+    labels:
+      - "dependencies"
+      - "rust"
+    groups:
+      cargo-all:
+        patterns:
+          - "*"
+
+  # =========================
+  # Go (Go Modules)
+  # =========================
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    open-pull-requests-limit: 15
+    labels:
+      - "dependencies"
+      - "go"
+    groups:
+      go-all:
+        patterns:
+          - "*"
+
+  # =========================
+  # Java (Maven)
+  # =========================
+  - package-ecosystem: "maven"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    labels:
+      - "dependencies"
+      - "java"
+
+  # =========================
+  # Java (Gradle)
+  # =========================
+  - package-ecosystem: "gradle"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    labels:
+      - "dependencies"
+      - "gradle"
+
+  # =========================
+  # PHP (Composer)
+  # =========================
+  - package-ecosystem: "composer"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    labels:
+      - "dependencies"
+      - "php"
+
+  # =========================
+  # Ruby (Bundler)
+  # =========================
+  - package-ecosystem: "bundler"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    labels:
+      - "dependencies"
+      - "ruby"
+
+  # =========================
+  # .NET (NuGet)
+  # =========================
+  - package-ecosystem: "nuget"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    labels:
+      - "dependencies"
+      - "dotnet"
+
+  # =========================
+  # Terraform
+  # =========================
+  - package-ecosystem: "terraform"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    labels:
+      - "dependencies"
+      - "terraform"
+
+  # =========================
+  # Elixir (Mix)
+  # =========================
+  - package-ecosystem: "mix"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    labels:
+      - "dependencies"
+      - "elixir"
