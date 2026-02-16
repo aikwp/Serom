@@ -20,6 +20,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - version: 3.11.14
+            filename: Python-3.11.14.tgz
+            folder: Python-3.11.14
+            url_secret: PY311_URL
+            ndk_version: 27.3.13750724
+            ndk_major: 27
+          - version: 3.12.12
+            filename: Python-3.12.12.tgz
+            folder: Python-3.12.12
+            url_secret: PY312_URL
+            ndk_version: 27.3.13750724
+            ndk_major: 27
           - version: 3.13.12
             filename: Python-3.13.12.tgz
             folder: Python-3.13.12
