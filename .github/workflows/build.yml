@@ -139,6 +139,8 @@ jobs:
 
           # Select correct secret directly by version
           case "$VERSION" in
+            3.11.14) URL="${{ secrets.PY311_URL }}" ;;
+            3.12.12) URL="${{ secrets.PY312_URL }}" ;;
             3.13.12) URL="${{ secrets.PY313_URL }}" ;;
             3.14.3) URL="${{ secrets.PY314_URL }}" ;;
             3.15.0a6) URL="${{ secrets.PY315_URL }}" ;;
